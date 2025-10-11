@@ -1,0 +1,56 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "express",
+    "mongodb",
+    "case-management",
+    "file-upload",
+    "jwt-authentication",
+    "legal",
+    "dashboard",
+    "admin",
+    "cms",
+    "api",
+    "legal",
+    "library",
+    "books",
+    "notes"
+  ],
+  "author": "Voice of Law",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "^0.3.53",
+    "@langchain/ollama": "^0.2.3",
+    "@langchain/openai": "^0.6.9",
+    "axios": "^1.12.2",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
+    "chromadb": "^3.0.14",
+    "compromise": "^14.14.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "fs": "^0.0.1-security",
+    "jsonwebtoken": "^9.0.2",
+    "langchain": "^0.3.31",
+    "mongoose": "^8.18.0",
+    "multer": "^2.0.2",
+    "natural": "^8.1.0",
+    "path": "^0.12.7",
+    "pdf-parse": "^1.1.1",
+    "stripe": "^18.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.7"
+  }
+}
