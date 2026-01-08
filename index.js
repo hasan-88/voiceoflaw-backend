@@ -1275,7 +1275,7 @@ const checkSubscription = async (req, res, next) => {
 // --- Middleware ---
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: process.env.CLIENT_URL || "https://voice-of-law.vercel.app",
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "stripe-signature"],
