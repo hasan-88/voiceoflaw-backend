@@ -45,9 +45,9 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ["admin", "user"], default: "user" },
 
-  // Enhanced Subscription Fields (Merged from both files)
-  isPaid: { type: Boolean, default: false }, // Legacy field kept for compatibility
-  isSubscribed: { type: Boolean, default: false }, // New subscription field
+  // Enhanced Subscription Fields
+  isPaid: { type: Boolean, default: false },
+  isSubscribed: { type: Boolean, default: false },
   subscriptionStatus: {
     type: String,
     enum: ["trial", "active", "expired", "cancelled"],
@@ -57,6 +57,14 @@ const UserSchema = new mongoose.Schema({
   trialEndDate: { type: Date },
   subscriptionStartDate: { type: Date },
   subscriptionEndDate: { type: Date },
+
+  // ✅ NEW: Daily Limits for Free Trial Users
+  dailyLimits: {
+    casesCreatedToday: { type: Number, default: 0 },
+    notesCreatedToday: { type: Number, default: 0 },
+    booksDownloadedToday: { type: Number, default: 0 },
+    lastResetDate: { type: Date, default: Date.now },
+  },
 
   // Payment Fields
   paymentStatus: {
@@ -92,14 +100,14 @@ UserSchema.pre("save", async function (next) {
   }
 });
 
-// Method to check if trial is active
+// ✅ Method to check if trial is active
 UserSchema.methods.isTrialActive = function () {
   if (!this.trialStartDate) return false;
   const now = new Date();
   return now <= this.trialEndDate;
 };
 
-// Method to check if subscription is active
+// ✅ Method to check if subscription is active
 UserSchema.methods.hasActiveSubscription = function () {
   if (this.role === "admin") return true;
 
@@ -112,6 +120,92 @@ UserSchema.methods.hasActiveSubscription = function () {
   }
 
   return false;
+};
+
+// ✅ NEW: Method to reset daily limits if needed
+UserSchema.methods.resetDailyLimitsIfNeeded = function () {
+  const now = new Date();
+  const lastReset = this.dailyLimits.lastResetDate;
+
+  // Check if it's a new day
+  if (
+    !lastReset ||
+    now.getDate() !== lastReset.getDate() ||
+    now.getMonth() !== lastReset.getMonth() ||
+    now.getFullYear() !== lastReset.getFullYear()
+  ) {
+    this.dailyLimits = {
+      casesCreatedToday: 0,
+      notesCreatedToday: 0,
+      booksDownloadedToday: 0,
+      lastResetDate: now,
+    };
+    return true;
+  }
+  return false;
+};
+
+// ✅ NEW: Check if user can create case (5 per day for trial)
+UserSchema.methods.canCreateCase = function () {
+  if (this.role === "admin") return true;
+  if (this.isSubscribed) return true; // Unlimited for paid users
+
+  // For trial users: max 5 per day
+  if (this.isTrialActive()) {
+    this.resetDailyLimitsIfNeeded();
+    return this.dailyLimits.casesCreatedToday < 5;
+  }
+
+  return false;
+};
+
+// ✅ NEW: Check if user can create note (5 per day for trial)
+UserSchema.methods.canCreateNote = function () {
+  if (this.role === "admin") return true;
+  if (this.isSubscribed) return true; // Unlimited for paid users
+
+  // For trial users: max 5 per day
+  if (this.isTrialActive()) {
+    this.resetDailyLimitsIfNeeded();
+    return this.dailyLimits.notesCreatedToday < 5;
+  }
+
+  return false;
+};
+
+// ✅ NEW: Check if user can download book (5 per day for trial)
+UserSchema.methods.canDownloadBook = function () {
+  if (this.role === "admin") return true;
+  if (this.isSubscribed) return true; // Unlimited for paid users
+
+  // For trial users: max 5 per day
+  if (this.isTrialActive()) {
+    this.resetDailyLimitsIfNeeded();
+    return this.dailyLimits.booksDownloadedToday < 5;
+  }
+
+  return false;
+};
+
+// ✅ NEW: Increment case creation count
+UserSchema.methods.incrementCaseCount = async function () {
+  this.resetDailyLimitsIfNeeded();
+  this.dailyLimits.casesCreatedToday += 1;
+  await this.save();
+};
+
+// ✅ NEW: Increment note creation count
+UserSchema.methods.incrementNoteCount = async function () {
+  this.resetDailyLimitsIfNeeded();
+  this.dailyLimits.notesCreatedToday += 1;
+  await this.save();
+};
+
+// ✅ NEW: Increment book download count
+UserSchema.methods.incrementBookDownloadCount = async function () {
+  this.resetDailyLimitsIfNeeded();
+  this.dailyLimits.booksDownloadedToday += 1;
+  await this.save();
 };
 
 // ============================================
@@ -1272,10 +1366,14 @@ const checkSubscription = async (req, res, next) => {
   }
 };
 
-// --- Middleware ---
+// --- Middleware ---H
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "https://voice-of-law.vercel.app",
+    origin: [
+      "https://voice-of-law.vercel.app", // Tumhara Vercel Link
+      "http://localhost:5173", // Tumhara Local Frontend
+      "http://localhost:3000", // Safety ke liye ye bhi rakh lo
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "stripe-signature"],
@@ -2079,6 +2177,9 @@ app.post(
 // ============================================
 
 // Check if subscription is needed
+// ============================================
+// ✅ UPDATED: Get subscription status WITH DAILY LIMITS
+// ============================================
 app.get("/api/subscription/status", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -2089,6 +2190,10 @@ app.get("/api/subscription/status", authMiddleware, async (req, res) => {
 
     const hasActiveSubscription = user.hasActiveSubscription();
     const isTrialActive = user.isTrialActive();
+
+    // Reset daily limits if needed
+    user.resetDailyLimitsIfNeeded();
+    await user.save();
 
     // Calculate days remaining
     let daysRemaining = 0;
@@ -2111,10 +2216,87 @@ app.get("/api/subscription/status", authMiddleware, async (req, res) => {
       subscriptionEndDate: user.subscriptionEndDate,
       requiresPayment: !hasActiveSubscription,
       isSubscribed: user.isSubscribed,
-      isPaid: user.isPaid, // Legacy field
+      isPaid: user.isPaid,
+
+      // ✅ NEW: Include daily limits info
+      dailyLimits: {
+        cases: {
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          used: user.dailyLimits.casesCreatedToday,
+          remaining:
+            user.isSubscribed || user.role === "admin"
+              ? "unlimited"
+              : Math.max(0, 5 - user.dailyLimits.casesCreatedToday),
+        },
+        notes: {
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          used: user.dailyLimits.notesCreatedToday,
+          remaining:
+            user.isSubscribed || user.role === "admin"
+              ? "unlimited"
+              : Math.max(0, 5 - user.dailyLimits.notesCreatedToday),
+        },
+        downloads: {
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          used: user.dailyLimits.booksDownloadedToday,
+          remaining:
+            user.isSubscribed || user.role === "admin"
+              ? "unlimited"
+              : Math.max(0, 5 - user.dailyLimits.booksDownloadedToday),
+        },
+      },
     });
   } catch (error) {
     console.error("Status check error:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ============================================
+// ✅ NEW: Get daily limits status (for frontend display)
+// ============================================
+app.get("/api/subscription/daily-limits", authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.resetDailyLimitsIfNeeded();
+    await user.save();
+
+    res.json({
+      cases: {
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        used: user.dailyLimits.casesCreatedToday,
+        remaining:
+          user.isSubscribed || user.role === "admin"
+            ? "unlimited"
+            : Math.max(0, 5 - user.dailyLimits.casesCreatedToday),
+        canCreate: user.canCreateCase(),
+      },
+      notes: {
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        used: user.dailyLimits.notesCreatedToday,
+        remaining:
+          user.isSubscribed || user.role === "admin"
+            ? "unlimited"
+            : Math.max(0, 5 - user.dailyLimits.notesCreatedToday),
+        canCreate: user.canCreateNote(),
+      },
+      downloads: {
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        used: user.dailyLimits.booksDownloadedToday,
+        remaining:
+          user.isSubscribed || user.role === "admin"
+            ? "unlimited"
+            : Math.max(0, 5 - user.dailyLimits.booksDownloadedToday),
+        canDownload: user.canDownloadBook(),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching daily limits:", error);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -2385,8 +2567,29 @@ app.get("/api/cases/:id", authMiddleware, async (req, res) => {
 });
 
 // Create new case
+// ============================================
+// ✅ UPDATED: Create new case WITH DAILY LIMIT CHECK
+// ============================================
 app.post("/api/cases", authMiddleware, async (req, res) => {
   try {
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ Check if user can create case (admin, subscribed, or trial with limits)
+    if (!user.canCreateCase()) {
+      return res.status(403).json({
+        message: "Daily limit reached",
+        error:
+          "You have reached your daily limit of 5 cases. Upgrade to premium for unlimited access.",
+        limitType: "cases",
+        dailyLimit: 5,
+        usedToday: user.dailyLimits.casesCreatedToday,
+      });
+    }
+
     const caseData = {
       title: req.body.caseTitle || req.body.title,
       court: req.body.courtName || req.body.court,
@@ -2408,6 +2611,12 @@ app.post("/api/cases", authMiddleware, async (req, res) => {
 
     const newCase = new Case(caseData);
     const savedCase = await newCase.save();
+
+    // ✅ Increment case count for trial users
+    if (user.isTrialActive() && !user.isSubscribed) {
+      await user.incrementCaseCount();
+    }
+
     res.status(201).json(savedCase);
   } catch (error) {
     if (error.code === 11000) {
@@ -3304,7 +3513,10 @@ app.delete("/api/books/:id", authMiddleware, async (req, res) => {
 });
 
 // Download book (increment download count)
-app.get("/api/books/:id/download", async (req, res) => {
+// ============================================
+// ✅ UPDATED: Download book WITH DAILY LIMIT CHECK
+// ============================================
+app.get("/api/books/:id/download", authMiddleware, async (req, res) => {
   try {
     const book = await Book.findById(req.params.id);
     if (!book) {
@@ -3313,9 +3525,32 @@ app.get("/api/books/:id/download", async (req, res) => {
         .json({ success: false, message: "Book not found" });
     }
 
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ Check if user can download book (admin, subscribed, or trial with limits)
+    if (!user.canDownloadBook()) {
+      return res.status(403).json({
+        message: "Daily limit reached",
+        error:
+          "You have reached your daily limit of 5 book downloads. Upgrade to premium for unlimited access.",
+        limitType: "downloads",
+        dailyLimit: 5,
+        usedToday: user.dailyLimits.booksDownloadedToday,
+      });
+    }
+
     // Increment download count
     book.downloads += 1;
     await book.save();
+
+    // ✅ Increment book download count for trial users
+    if (user.isTrialActive() && !user.isSubscribed) {
+      await user.incrementBookDownloadCount();
+    }
 
     const filePath = path.join(__dirname, book.pdfFile);
     res.download(filePath, `${book.title}.pdf`);
@@ -3386,6 +3621,9 @@ app.get("/api/standalone/notes/:id", authMiddleware, async (req, res) => {
 });
 
 // UPDATED: Create new note (linked to logged-in user)
+// ============================================
+// ✅ UPDATED: Create new standalone note WITH DAILY LIMIT CHECK
+// ============================================
 app.post("/api/standalone/notes", authMiddleware, async (req, res) => {
   try {
     const { title, content, date } = req.body;
@@ -3396,14 +3634,38 @@ app.post("/api/standalone/notes", authMiddleware, async (req, res) => {
         .json({ message: "Title and content are required" });
     }
 
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ Check if user can create note (admin, subscribed, or trial with limits)
+    if (!user.canCreateNote()) {
+      return res.status(403).json({
+        message: "Daily limit reached",
+        error:
+          "You have reached your daily limit of 5 notes. Upgrade to premium for unlimited access.",
+        limitType: "notes",
+        dailyLimit: 5,
+        usedToday: user.dailyLimits.notesCreatedToday,
+      });
+    }
+
     const newNote = new StandaloneNote({
       title,
       content,
       date: date || new Date().toLocaleString(),
-      createdBy: req.user.userId, // Link note to logged-in user
+      createdBy: req.user.userId,
     });
 
     const savedNote = await newNote.save();
+
+    // ✅ Increment note count for trial users
+    if (user.isTrialActive() && !user.isSubscribed) {
+      await user.incrementNoteCount();
+    }
+
     res.status(201).json(savedNote);
   } catch (error) {
     res
