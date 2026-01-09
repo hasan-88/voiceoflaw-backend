@@ -1366,19 +1366,23 @@ const checkSubscription = async (req, res, next) => {
   }
 };
 
-// --- Middleware ---H
+// --- Middleware ---
 app.use(
   cors({
     origin: [
-      "https://voice-of-law.vercel.app", // Tumhara Vercel Link
-      "http://localhost:5173", // Tumhara Local Frontend
-      "http://localhost:3000", // Safety ke liye ye bhi rakh lo
+      "https://voice-of-law.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:3000",
     ],
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "stripe-signature"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
   })
 );
+
+// Add OPTIONS handler for preflight requests
+app.options("*", cors());
 
 // Webhook endpoint (must be raw body, so yeh express.json() se pehle aata hai)
 app.post(
@@ -2948,50 +2952,39 @@ app.patch("/api/cases/:id/status", authMiddleware, async (req, res) => {
 });
 
 // =============== MORE ABOUT CARDS ROUTES ===============
+
 // GET all more about cards
 app.get("/api/more-about-cards", async (req, res) => {
   try {
-    const cards = await MoreAboutCard.find({});
+    const cards = await MoreAboutCard.find({}).sort({ createdAt: -1 });
+    console.log(`✅ Fetched ${cards.length} more about cards`);
     res.json(cards);
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching more about cards:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// GET more about cards by category
-app.get("/api/more-about-cards/category/:category", async (req, res) => {
-  try {
-    const category = req.params.category;
-    const cards = await MoreAboutCard.find({ category });
-    res.json(cards);
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// GET single more about card
-app.get("/api/more-about-cards/:id", async (req, res) => {
-  try {
-    const card = await MoreAboutCard.findById(req.params.id);
-    if (!card) {
-      return res.status(404).json({ error: "Card not found" });
-    }
-    res.json(card);
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// POST create new more about card (FIXED)
+// POST create new more about card
 app.post(
   "/api/more-about-cards",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
+      console.log("📝 Creating more about card with data:", req.body);
+
       const { category, date, title, description, isLocked } = req.body;
 
-      let imagePath = "/uploads/default.jpg";
+      if (!title || !description || !category || !date) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          required: ["title", "description", "category", "date"],
+        });
+      }
+
+      let imagePath = "/uploads/more-about-cards/default.jpg";
+
       if (req.file) {
         const correctSubfolder = "more-about-cards";
         const correctDestDir = path.join(
@@ -2999,11 +2992,10 @@ app.post(
           "uploads",
           correctSubfolder
         );
-        const newPath = path.join(correctDestDir, req.file.filename);
-
         fs.mkdirSync(correctDestDir, { recursive: true });
-        fs.renameSync(req.file.path, newPath);
 
+        const newPath = path.join(correctDestDir, req.file.filename);
+        fs.renameSync(req.file.path, newPath);
         imagePath = `/uploads/${correctSubfolder}/${req.file.filename}`;
       }
 
@@ -3017,21 +3009,24 @@ app.post(
       });
 
       await newCard.save();
+      console.log("✅ More about card created:", newCard._id);
       res.status(201).json(newCard);
     } catch (error) {
       console.error("Error creating more about card:", error);
-      res.status(500).json({ error: "Server error", details: error.message });
+      res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
 
-// PUT update more about card (FIXED)
+// PUT update more about card
 app.put(
   "/api/more-about-cards/:id",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
+      console.log("✏️ Updating more about card:", req.params.id);
+
       const { category, date, title, description, isLocked } = req.body;
 
       const updateData = {
@@ -3049,28 +3044,28 @@ app.put(
           "uploads",
           correctSubfolder
         );
-        const newPath = path.join(correctDestDir, req.file.filename);
-
         fs.mkdirSync(correctDestDir, { recursive: true });
-        fs.renameSync(req.file.path, newPath);
 
+        const newPath = path.join(correctDestDir, req.file.filename);
+        fs.renameSync(req.file.path, newPath);
         updateData.image = `/uploads/${correctSubfolder}/${req.file.filename}`;
       }
 
       const card = await MoreAboutCard.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true }
+        { new: true, runValidators: true }
       );
 
       if (!card) {
         return res.status(404).json({ error: "Card not found" });
       }
 
+      console.log("✅ More about card updated:", card._id);
       res.json(card);
     } catch (error) {
       console.error("Error updating more about card:", error);
-      res.status(500).json({ error: "Server error", details: error.message });
+      res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
@@ -3078,14 +3073,27 @@ app.put(
 // DELETE more about card
 app.delete("/api/more-about-cards/:id", authMiddleware, async (req, res) => {
   try {
+    console.log("🗑️ Deleting more about card:", req.params.id);
+
     const card = await MoreAboutCard.findByIdAndDelete(req.params.id);
+
     if (!card) {
       return res.status(404).json({ error: "Card not found" });
     }
 
+    // Delete image file if exists
+    if (card.image && !card.image.includes("default")) {
+      const imagePath = path.join(__dirname, card.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    console.log("✅ More about card deleted:", card._id);
     res.json({ message: "Card deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error deleting more about card:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
@@ -3224,6 +3232,7 @@ app.delete("/api/latest-updates/:id", authMiddleware, async (req, res) => {
 });
 
 // =============== ANNOUNCEMENTS ROUTES ===============
+
 // GET all announcements
 app.get("/api/announcements", async (req, res) => {
   try {
@@ -3234,30 +3243,30 @@ app.get("/api/announcements", async (req, res) => {
       filter.category = category;
     }
 
-    const announcements = await Announcement.find(filter);
+    const announcements = await Announcement.find(filter).sort({
+      createdAt: -1,
+    });
+    console.log(`✅ Fetched ${announcements.length} announcements`);
     res.json(announcements);
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching announcements:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// GET single announcement
-app.get("/api/announcements/:id", async (req, res) => {
-  try {
-    const announcement = await Announcement.findById(req.params.id);
-    if (!announcement) {
-      return res.status(404).json({ error: "Announcement not found" });
-    }
-    res.json(announcement);
-  } catch (error) {
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// POST create new announcement (FIXED)
+// POST create new announcement
 app.post("/api/announcements", authMiddleware, async (req, res) => {
   try {
+    console.log("📝 Creating announcement with data:", req.body);
+
     const { date, type, title, link, category, priority } = req.body;
+
+    if (!date || !type || !title || !category) {
+      return res.status(400).json({
+        error: "Missing required fields",
+        required: ["date", "type", "title", "category"],
+      });
+    }
 
     const newAnnouncement = new Announcement({
       date,
@@ -3269,16 +3278,19 @@ app.post("/api/announcements", authMiddleware, async (req, res) => {
     });
 
     await newAnnouncement.save();
+    console.log("✅ Announcement created:", newAnnouncement._id);
     res.status(201).json(newAnnouncement);
   } catch (error) {
     console.error("Error creating announcement:", error);
-    res.status(500).json({ error: "Server error", details: error.message });
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// PUT update announcement (FIXED)
+// PUT update announcement
 app.put("/api/announcements/:id", authMiddleware, async (req, res) => {
   try {
+    console.log("✏️ Updating announcement:", req.params.id);
+
     const { date, type, title, link, category, priority } = req.body;
 
     const announcement = await Announcement.findByIdAndUpdate(
@@ -3291,36 +3303,43 @@ app.put("/api/announcements/:id", authMiddleware, async (req, res) => {
         category,
         priority: priority || "medium",
       },
-      { new: true }
+      { new: true, runValidators: true }
     );
 
     if (!announcement) {
       return res.status(404).json({ error: "Announcement not found" });
     }
 
+    console.log("✅ Announcement updated:", announcement._id);
     res.json(announcement);
   } catch (error) {
     console.error("Error updating announcement:", error);
-    res.status(500).json({ error: "Server error", details: error.message });
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
 // DELETE announcement
 app.delete("/api/announcements/:id", authMiddleware, async (req, res) => {
   try {
+    console.log("🗑️ Deleting announcement:", req.params.id);
+
     const announcement = await Announcement.findByIdAndDelete(req.params.id);
+
     if (!announcement) {
       return res.status(404).json({ error: "Announcement not found" });
     }
 
+    console.log("✅ Announcement deleted:", announcement._id);
     res.json({ message: "Announcement deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error deleting announcement:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
 // =============== BOOK ROUTES ===============
-// Get all books (with optional category filter)
+
+// GET all books
 app.get("/api/books", async (req, res) => {
   try {
     const { category, search } = req.query;
@@ -3339,8 +3358,10 @@ app.get("/api/books", async (req, res) => {
     }
 
     const books = await Book.find(query).sort({ createdAt: -1 });
+    console.log(`✅ Fetched ${books.length} books`);
     res.json({ success: true, data: books });
   } catch (error) {
+    console.error("Error fetching books:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching books",
@@ -3349,26 +3370,7 @@ app.get("/api/books", async (req, res) => {
   }
 });
 
-// Get single book by ID
-app.get("/api/books/:id", async (req, res) => {
-  try {
-    const book = await Book.findById(req.params.id);
-    if (!book) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Book not found" });
-    }
-    res.json({ success: true, data: book });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Error fetching book",
-      error: error.message,
-    });
-  }
-});
-
-// Create new book
+// POST create new book
 app.post(
   "/api/books",
   authMiddleware,
@@ -3378,6 +3380,8 @@ app.post(
   ]),
   async (req, res) => {
     try {
+      console.log("📝 Creating book with data:", req.body);
+
       if (!req.files || !req.files.image || !req.files.pdfFile) {
         return res.status(400).json({
           success: false,
@@ -3403,13 +3407,14 @@ app.post(
       const newBook = new Book(bookData);
       await newBook.save();
 
+      console.log("✅ Book created:", newBook._id);
       res.status(201).json({
         success: true,
         message: "Book created successfully",
         data: newBook,
       });
     } catch (error) {
-      // Clean up uploaded files if there's an error
+      console.error("Error creating book:", error);
       if (req.files) {
         if (req.files.image) deleteFile(req.files.image[0].path);
         if (req.files.pdfFile) deleteFile(req.files.pdfFile[0].path);
@@ -3423,7 +3428,7 @@ app.post(
   }
 );
 
-// Update book
+// PUT update book
 app.put(
   "/api/books/:id",
   authMiddleware,
@@ -3433,6 +3438,8 @@ app.put(
   ]),
   async (req, res) => {
     try {
+      console.log("✏️ Updating book:", req.params.id);
+
       const book = await Book.findById(req.params.id);
       if (!book) {
         return res
@@ -3448,14 +3455,12 @@ app.put(
         publishedDate: req.body.publishedDate || book.publishedDate,
       };
 
-      // Handle image update
       if (req.files && req.files.image) {
         deleteFile("." + book.image);
         updateData.image =
           "/uploads/book-images/" + req.files.image[0].filename;
       }
 
-      // Handle PDF update
       if (req.files && req.files.pdfFile) {
         deleteFile("." + book.pdfFile);
         updateData.pdfFile = "/uploads/books/" + req.files.pdfFile[0].filename;
@@ -3465,15 +3470,17 @@ app.put(
       const updatedBook = await Book.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true }
+        { new: true, runValidators: true }
       );
 
+      console.log("✅ Book updated:", updatedBook._id);
       res.json({
         success: true,
         message: "Book updated successfully",
         data: updatedBook,
       });
     } catch (error) {
+      console.error("Error updating book:", error);
       res.status(500).json({
         success: false,
         message: "Error updating book",
@@ -3483,9 +3490,11 @@ app.put(
   }
 );
 
-// Delete book
+// DELETE book
 app.delete("/api/books/:id", authMiddleware, async (req, res) => {
   try {
+    console.log("🗑️ Deleting book:", req.params.id);
+
     const book = await Book.findById(req.params.id);
     if (!book) {
       return res
@@ -3493,17 +3502,18 @@ app.delete("/api/books/:id", authMiddleware, async (req, res) => {
         .json({ success: false, message: "Book not found" });
     }
 
-    // Delete associated files
     deleteFile("." + book.image);
     deleteFile("." + book.pdfFile);
 
     await Book.findByIdAndDelete(req.params.id);
 
+    console.log("✅ Book deleted:", req.params.id);
     res.json({
       success: true,
       message: "Book deleted successfully",
     });
   } catch (error) {
+    console.error("Error deleting book:", error);
     res.status(500).json({
       success: false,
       message: "Error deleting book",
@@ -3512,7 +3522,6 @@ app.delete("/api/books/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Download book (increment download count)
 // ============================================
 // ✅ UPDATED: Download book WITH DAILY LIMIT CHECK
 // ============================================
@@ -3531,7 +3540,6 @@ app.get("/api/books/:id/download", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // ✅ Check if user can download book (admin, subscribed, or trial with limits)
     // ✅ Check if user can download book (admin, subscribed, or trial with limits)
     if (!user.canDownloadBook()) {
       return res.status(403).json({
@@ -3756,6 +3764,7 @@ app.get(
 );
 
 // =============== UTILITY ROUTES ===============
+
 // GET dashboard stats
 app.get("/api/dashboard-stats", async (req, res) => {
   try {
@@ -3766,31 +3775,6 @@ app.get("/api/dashboard-stats", async (req, res) => {
     const totalBooks = await Book.countDocuments({ isActive: true });
     const totalStandaloneNotes = await StandaloneNote.countDocuments();
 
-    const categoriesCount = {
-      Law: await MoreAboutCard.countDocuments({ category: "Law" }),
-      Cases: await MoreAboutCard.countDocuments({ category: "Cases" }),
-      Books: await MoreAboutCard.countDocuments({ category: "Books" }),
-      ACTS: await MoreAboutCard.countDocuments({ category: "ACTS" }),
-    };
-
-    const announcementsByType = {
-      TENDERS: await Announcement.countDocuments({ category: "TENDERS" }),
-      NOTIFICATIONS: await Announcement.countDocuments({
-        category: "NOTIFICATIONS",
-      }),
-      PRESS_RELEASE: await Announcement.countDocuments({
-        category: "PRESS_RELEASE",
-      }),
-      NEWS: await Announcement.countDocuments({ category: "NEWS" }),
-      EVENTS: await Announcement.countDocuments({ category: "EVENTS" }),
-      DOWNLOADS: await Announcement.countDocuments({ category: "DOWNLOADS" }),
-    };
-
-    const booksByCategory = await Book.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: "$category", count: { $sum: 1 } } },
-    ]);
-
     const stats = {
       totalMoreAboutCards,
       totalLatestUpdates,
@@ -3798,14 +3782,13 @@ app.get("/api/dashboard-stats", async (req, res) => {
       totalUsers,
       totalBooks,
       totalStandaloneNotes,
-      categoriesCount,
-      announcementsByType,
-      booksByCategory,
     };
 
+    console.log("✅ Dashboard stats fetched:", stats);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("Error fetching dashboard stats:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
@@ -4599,6 +4582,41 @@ async function initializeDefaultData() {
     console.error("Error initializing default data:", error);
   }
 }
+
+// ============================================
+// 7. ENSURE DEFAULT DATA EXISTS
+// ============================================
+async function ensureDefaultData() {
+  try {
+    // Check if we have any data
+    const cardCount = await MoreAboutCard.countDocuments();
+    const updateCount = await LatestUpdate.countDocuments();
+    const announcementCount = await Announcement.countDocuments();
+    const bookCount = await Book.countDocuments();
+
+    console.log("📊 Current data counts:", {
+      cards: cardCount,
+      updates: updateCount,
+      announcements: announcementCount,
+      books: bookCount,
+    });
+
+    // If no data exists, create sample data
+    if (cardCount === 0 && updateCount === 0 && announcementCount === 0) {
+      console.log("⚠️ No data found. Creating sample data...");
+      await initializeDefaultData();
+    } else {
+      console.log("✅ Data exists. Skipping initialization.");
+    }
+  } catch (error) {
+    console.error("Error checking data:", error);
+  }
+}
+
+// Call this on server start
+ensureDefaultData();
+
+console.log("✅ All admin panel routes fixed and active");
 
 createAdminUser();
 initializeDefaultData();
