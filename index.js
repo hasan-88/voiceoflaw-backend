@@ -150,38 +150,38 @@ UserSchema.methods.canCreateCase = function () {
   if (this.role === "admin") return true;
   if (this.isSubscribed) return true; // Unlimited for paid users
 
-  // For trial users: max 5 per day
+  // For trial users: max 2 per day
   if (this.isTrialActive()) {
     this.resetDailyLimitsIfNeeded();
-    return this.dailyLimits.casesCreatedToday < 5;
+    return this.dailyLimits.casesCreatedToday < 2;
   }
 
   return false;
 };
 
-// ✅ NEW: Check if user can create note (5 per day for trial)
+// ✅ NEW: Check if user can create note (2 per day for trial)
 UserSchema.methods.canCreateNote = function () {
   if (this.role === "admin") return true;
   if (this.isSubscribed) return true; // Unlimited for paid users
 
-  // For trial users: max 5 per day
+  // For trial users: max 2 per day
   if (this.isTrialActive()) {
     this.resetDailyLimitsIfNeeded();
-    return this.dailyLimits.notesCreatedToday < 5;
+    return this.dailyLimits.notesCreatedToday < 2;
   }
 
   return false;
 };
 
-// ✅ NEW: Check if user can download book (5 per day for trial)
+// ✅ NEW: Check if user can download book (2 per day for trial)
 UserSchema.methods.canDownloadBook = function () {
   if (this.role === "admin") return true;
   if (this.isSubscribed) return true; // Unlimited for paid users
 
-  // For trial users: max 5 per day
+  // For trial users: max 2 per day
   if (this.isTrialActive()) {
     this.resetDailyLimitsIfNeeded();
-    return this.dailyLimits.booksDownloadedToday < 5;
+    return this.dailyLimits.booksDownloadedToday < 2;
   }
 
   return false;
@@ -2221,28 +2221,28 @@ app.get("/api/subscription/status", authMiddleware, async (req, res) => {
       // ✅ NEW: Include daily limits info
       dailyLimits: {
         cases: {
-          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
           used: user.dailyLimits.casesCreatedToday,
           remaining:
             user.isSubscribed || user.role === "admin"
               ? "unlimited"
-              : Math.max(0, 5 - user.dailyLimits.casesCreatedToday),
+              : Math.max(0, 2 - user.dailyLimits.casesCreatedToday),
         },
         notes: {
-          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
           used: user.dailyLimits.notesCreatedToday,
           remaining:
             user.isSubscribed || user.role === "admin"
               ? "unlimited"
-              : Math.max(0, 5 - user.dailyLimits.notesCreatedToday),
+              : Math.max(0, 2 - user.dailyLimits.notesCreatedToday),
         },
         downloads: {
-          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+          limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
           used: user.dailyLimits.booksDownloadedToday,
           remaining:
             user.isSubscribed || user.role === "admin"
               ? "unlimited"
-              : Math.max(0, 5 - user.dailyLimits.booksDownloadedToday),
+              : Math.max(0, 2 - user.dailyLimits.booksDownloadedToday),
         },
       },
     });
@@ -2268,30 +2268,30 @@ app.get("/api/subscription/daily-limits", authMiddleware, async (req, res) => {
 
     res.json({
       cases: {
-        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
         used: user.dailyLimits.casesCreatedToday,
         remaining:
           user.isSubscribed || user.role === "admin"
             ? "unlimited"
-            : Math.max(0, 5 - user.dailyLimits.casesCreatedToday),
+            : Math.max(0, 2 - user.dailyLimits.casesCreatedToday),
         canCreate: user.canCreateCase(),
       },
       notes: {
-        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
         used: user.dailyLimits.notesCreatedToday,
         remaining:
           user.isSubscribed || user.role === "admin"
             ? "unlimited"
-            : Math.max(0, 5 - user.dailyLimits.notesCreatedToday),
+            : Math.max(0, 2 - user.dailyLimits.notesCreatedToday),
         canCreate: user.canCreateNote(),
       },
       downloads: {
-        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 5,
+        limit: user.isSubscribed || user.role === "admin" ? "unlimited" : 2,
         used: user.dailyLimits.booksDownloadedToday,
         remaining:
           user.isSubscribed || user.role === "admin"
             ? "unlimited"
-            : Math.max(0, 5 - user.dailyLimits.booksDownloadedToday),
+            : Math.max(0, 2 - user.dailyLimits.booksDownloadedToday),
         canDownload: user.canDownloadBook(),
       },
     });
@@ -2583,9 +2583,9 @@ app.post("/api/cases", authMiddleware, async (req, res) => {
       return res.status(403).json({
         message: "Daily limit reached",
         error:
-          "You have reached your daily limit of 5 cases. Upgrade to premium for unlimited access.",
+          "You have reached your daily limit of 2 cases. Upgrade to premium for unlimited access.",
         limitType: "cases",
-        dailyLimit: 5,
+        dailyLimit: 2,
         usedToday: user.dailyLimits.casesCreatedToday,
       });
     }
@@ -3532,13 +3532,14 @@ app.get("/api/books/:id/download", authMiddleware, async (req, res) => {
     }
 
     // ✅ Check if user can download book (admin, subscribed, or trial with limits)
+    // ✅ Check if user can download book (admin, subscribed, or trial with limits)
     if (!user.canDownloadBook()) {
       return res.status(403).json({
         message: "Daily limit reached",
         error:
-          "You have reached your daily limit of 5 book downloads. Upgrade to premium for unlimited access.",
+          "You have reached your daily limit of 2 book downloads. Upgrade to premium for unlimited access.",
         limitType: "downloads",
-        dailyLimit: 5,
+        dailyLimit: 2,
         usedToday: user.dailyLimits.booksDownloadedToday,
       });
     }
@@ -3645,9 +3646,9 @@ app.post("/api/standalone/notes", authMiddleware, async (req, res) => {
       return res.status(403).json({
         message: "Daily limit reached",
         error:
-          "You have reached your daily limit of 5 notes. Upgrade to premium for unlimited access.",
+          "You have reached your daily limit of 2 notes. Upgrade to premium for unlimited access.",
         limitType: "notes",
-        dailyLimit: 5,
+        dailyLimit: 2,
         usedToday: user.dailyLimits.notesCreatedToday,
       });
     }
@@ -4613,5 +4614,5 @@ app.listen(PORT, () => {
   console.log(`👤 Admin Login: admin@example.com / password123`);
   console.log(`📝 Environment: ${process.env.NODE_ENV || "development"}`);
 });
- 
+
 module.exports = app;
