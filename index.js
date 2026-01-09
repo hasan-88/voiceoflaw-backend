@@ -2953,27 +2953,52 @@ app.patch("/api/cases/:id/status", authMiddleware, async (req, res) => {
 
 // =============== MORE ABOUT CARDS ROUTES ===============
 
-// GET all more about cards
 app.get("/api/more-about-cards", async (req, res) => {
   try {
     const cards = await MoreAboutCard.find({}).sort({ createdAt: -1 });
-    console.log(`✅ Fetched ${cards.length} more about cards`);
+    console.log(`✅ GET /api/more-about-cards - Found ${cards.length} cards`);
     res.json(cards);
   } catch (error) {
-    console.error("Error fetching more about cards:", error);
+    console.error("❌ GET /api/more-about-cards error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// POST create new more about card
+app.get("/api/more-about-cards/category/:category", async (req, res) => {
+  try {
+    const category = req.params.category;
+    const cards = await MoreAboutCard.find({ category });
+    console.log(
+      `✅ GET /api/more-about-cards/category/${category} - Found ${cards.length} cards`
+    );
+    res.json(cards);
+  } catch (error) {
+    console.error("❌ GET /api/more-about-cards/category error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
+  }
+});
+
+app.get("/api/more-about-cards/:id", async (req, res) => {
+  try {
+    const card = await MoreAboutCard.findById(req.params.id);
+    if (!card) {
+      return res.status(404).json({ error: "Card not found" });
+    }
+    console.log(`✅ GET /api/more-about-cards/${req.params.id}`);
+    res.json(card);
+  } catch (error) {
+    console.error("❌ GET /api/more-about-cards/:id error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
+  }
+});
+
 app.post(
   "/api/more-about-cards",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
-      console.log("📝 Creating more about card with data:", req.body);
-
+      console.log("📝 POST /api/more-about-cards - Body:", req.body);
       const { category, date, title, description, isLocked } = req.body;
 
       if (!title || !description || !category || !date) {
@@ -2984,7 +3009,6 @@ app.post(
       }
 
       let imagePath = "/uploads/more-about-cards/default.jpg";
-
       if (req.file) {
         const correctSubfolder = "more-about-cards";
         const correctDestDir = path.join(
@@ -2993,7 +3017,6 @@ app.post(
           correctSubfolder
         );
         fs.mkdirSync(correctDestDir, { recursive: true });
-
         const newPath = path.join(correctDestDir, req.file.filename);
         fs.renameSync(req.file.path, newPath);
         imagePath = `/uploads/${correctSubfolder}/${req.file.filename}`;
@@ -3009,24 +3032,27 @@ app.post(
       });
 
       await newCard.save();
-      console.log("✅ More about card created:", newCard._id);
+      console.log(
+        `✅ POST /api/more-about-cards - Created card ID: ${newCard._id}`
+      );
       res.status(201).json(newCard);
     } catch (error) {
-      console.error("Error creating more about card:", error);
+      console.error("❌ POST /api/more-about-cards error:", error);
       res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
 
-// PUT update more about card
 app.put(
   "/api/more-about-cards/:id",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
-      console.log("✏️ Updating more about card:", req.params.id);
-
+      console.log(
+        `✏️ PUT /api/more-about-cards/${req.params.id} - Body:`,
+        req.body
+      );
       const { category, date, title, description, isLocked } = req.body;
 
       const updateData = {
@@ -3045,7 +3071,6 @@ app.put(
           correctSubfolder
         );
         fs.mkdirSync(correctDestDir, { recursive: true });
-
         const newPath = path.join(correctDestDir, req.file.filename);
         fs.renameSync(req.file.path, newPath);
         updateData.image = `/uploads/${correctSubfolder}/${req.file.filename}`;
@@ -3054,83 +3079,84 @@ app.put(
       const card = await MoreAboutCard.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true, runValidators: true }
+        {
+          new: true,
+          runValidators: true,
+        }
       );
 
       if (!card) {
         return res.status(404).json({ error: "Card not found" });
       }
 
-      console.log("✅ More about card updated:", card._id);
+      console.log(`✅ PUT /api/more-about-cards/${req.params.id} - Updated`);
       res.json(card);
     } catch (error) {
-      console.error("Error updating more about card:", error);
+      console.error("❌ PUT /api/more-about-cards/:id error:", error);
       res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
 
-// DELETE more about card
 app.delete("/api/more-about-cards/:id", authMiddleware, async (req, res) => {
   try {
-    console.log("🗑️ Deleting more about card:", req.params.id);
-
+    console.log(`🗑️ DELETE /api/more-about-cards/${req.params.id}`);
     const card = await MoreAboutCard.findByIdAndDelete(req.params.id);
-
     if (!card) {
       return res.status(404).json({ error: "Card not found" });
     }
-
-    // Delete image file if exists
-    if (card.image && !card.image.includes("default")) {
-      const imagePath = path.join(__dirname, card.image);
-      if (fs.existsSync(imagePath)) {
-        fs.unlinkSync(imagePath);
-      }
-    }
-
-    console.log("✅ More about card deleted:", card._id);
+    console.log(`✅ DELETE /api/more-about-cards/${req.params.id} - Deleted`);
     res.json({ message: "Card deleted successfully" });
   } catch (error) {
-    console.error("Error deleting more about card:", error);
+    console.error("❌ DELETE /api/more-about-cards/:id error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
 // =============== LATEST UPDATES ROUTES ===============
-// GET all latest updates
+
 app.get("/api/latest-updates", async (req, res) => {
   try {
-    const updates = await LatestUpdate.find({});
+    const updates = await LatestUpdate.find({}).sort({ createdAt: -1 });
+    console.log(`✅ GET /api/latest-updates - Found ${updates.length} updates`);
     res.json(updates);
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ GET /api/latest-updates error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// GET single latest update
 app.get("/api/latest-updates/:id", async (req, res) => {
   try {
     const update = await LatestUpdate.findById(req.params.id);
     if (!update) {
       return res.status(404).json({ error: "Update not found" });
     }
+    console.log(`✅ GET /api/latest-updates/${req.params.id}`);
     res.json(update);
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ GET /api/latest-updates/:id error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// POST create new latest update (FIXED)
 app.post(
   "/api/latest-updates",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
+      console.log("📝 POST /api/latest-updates - Body:", req.body);
       const { title, summary, details, date, type, gradient } = req.body;
 
-      let imagePath = "/uploads/default.jpg";
+      if (!title || !summary || !details || !date || !type) {
+        return res.status(400).json({
+          error: "Missing required fields",
+          required: ["title", "summary", "details", "date", "type"],
+        });
+      }
+
+      let imagePath = "/uploads/latest-updates/default.jpg";
       if (req.file) {
         const correctSubfolder = "latest-updates";
         const correctDestDir = path.join(
@@ -3138,11 +3164,9 @@ app.post(
           "uploads",
           correctSubfolder
         );
-        const newPath = path.join(correctDestDir, req.file.filename);
-
         fs.mkdirSync(correctDestDir, { recursive: true });
+        const newPath = path.join(correctDestDir, req.file.filename);
         fs.renameSync(req.file.path, newPath);
-
         imagePath = `/uploads/${correctSubfolder}/${req.file.filename}`;
       }
 
@@ -3158,31 +3182,30 @@ app.post(
       });
 
       await newUpdate.save();
+      console.log(
+        `✅ POST /api/latest-updates - Created update ID: ${newUpdate._id}`
+      );
       res.status(201).json(newUpdate);
     } catch (error) {
-      console.error("Error creating latest update:", error);
-      res.status(500).json({ error: "Server error", details: error.message });
+      console.error("❌ POST /api/latest-updates error:", error);
+      res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
 
-// PUT update latest update (FIXED)
 app.put(
   "/api/latest-updates/:id",
   authMiddleware,
   upload.single("image"),
   async (req, res) => {
     try {
+      console.log(
+        `✏️ PUT /api/latest-updates/${req.params.id} - Body:`,
+        req.body
+      );
       const { title, summary, details, date, type, gradient } = req.body;
 
-      const updateData = {
-        title,
-        summary,
-        details,
-        date,
-        type,
-        gradient,
-      };
+      const updateData = { title, summary, details, date, type, gradient };
 
       if (req.file) {
         const correctSubfolder = "latest-updates";
@@ -3191,74 +3214,88 @@ app.put(
           "uploads",
           correctSubfolder
         );
-        const newPath = path.join(correctDestDir, req.file.filename);
-
         fs.mkdirSync(correctDestDir, { recursive: true });
+        const newPath = path.join(correctDestDir, req.file.filename);
         fs.renameSync(req.file.path, newPath);
-
         updateData.image = `/uploads/${correctSubfolder}/${req.file.filename}`;
       }
 
       const update = await LatestUpdate.findByIdAndUpdate(
         req.params.id,
         updateData,
-        { new: true }
+        {
+          new: true,
+          runValidators: true,
+        }
       );
 
       if (!update) {
         return res.status(404).json({ error: "Update not found" });
       }
 
+      console.log(`✅ PUT /api/latest-updates/${req.params.id} - Updated`);
       res.json(update);
     } catch (error) {
-      console.error("Error updating latest update:", error);
-      res.status(500).json({ error: "Server error", details: error.message });
+      console.error("❌ PUT /api/latest-updates/:id error:", error);
+      res.status(500).json({ error: "Server error", message: error.message });
     }
   }
 );
 
-// DELETE latest update
 app.delete("/api/latest-updates/:id", authMiddleware, async (req, res) => {
   try {
+    console.log(`🗑️ DELETE /api/latest-updates/${req.params.id}`);
     const update = await LatestUpdate.findByIdAndDelete(req.params.id);
     if (!update) {
       return res.status(404).json({ error: "Update not found" });
     }
-
+    console.log(`✅ DELETE /api/latest-updates/${req.params.id} - Deleted`);
     res.json({ message: "Update deleted successfully" });
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+    console.error("❌ DELETE /api/latest-updates/:id error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
 // =============== ANNOUNCEMENTS ROUTES ===============
 
-// GET all announcements
 app.get("/api/announcements", async (req, res) => {
   try {
     const { category } = req.query;
     let filter = {};
-
     if (category && category !== "ALL") {
       filter.category = category;
     }
-
     const announcements = await Announcement.find(filter).sort({
       createdAt: -1,
     });
-    console.log(`✅ Fetched ${announcements.length} announcements`);
+    console.log(
+      `✅ GET /api/announcements - Found ${announcements.length} announcements`
+    );
     res.json(announcements);
   } catch (error) {
-    console.error("Error fetching announcements:", error);
+    console.error("❌ GET /api/announcements error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// POST create new announcement
+app.get("/api/announcements/:id", async (req, res) => {
+  try {
+    const announcement = await Announcement.findById(req.params.id);
+    if (!announcement) {
+      return res.status(404).json({ error: "Announcement not found" });
+    }
+    console.log(`✅ GET /api/announcements/${req.params.id}`);
+    res.json(announcement);
+  } catch (error) {
+    console.error("❌ GET /api/announcements/:id error:", error);
+    res.status(500).json({ error: "Server error", message: error.message });
+  }
+});
+
 app.post("/api/announcements", authMiddleware, async (req, res) => {
   try {
-    console.log("📝 Creating announcement with data:", req.body);
-
+    console.log("📝 POST /api/announcements - Body:", req.body);
     const { date, type, title, link, category, priority } = req.body;
 
     if (!date || !type || !title || !category) {
@@ -3278,19 +3315,19 @@ app.post("/api/announcements", authMiddleware, async (req, res) => {
     });
 
     await newAnnouncement.save();
-    console.log("✅ Announcement created:", newAnnouncement._id);
+    console.log(
+      `✅ POST /api/announcements - Created announcement ID: ${newAnnouncement._id}`
+    );
     res.status(201).json(newAnnouncement);
   } catch (error) {
-    console.error("Error creating announcement:", error);
+    console.error("❌ POST /api/announcements error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// PUT update announcement
 app.put("/api/announcements/:id", authMiddleware, async (req, res) => {
   try {
-    console.log("✏️ Updating announcement:", req.params.id);
-
+    console.log(`✏️ PUT /api/announcements/${req.params.id} - Body:`, req.body);
     const { date, type, title, link, category, priority } = req.body;
 
     const announcement = await Announcement.findByIdAndUpdate(
@@ -3310,35 +3347,30 @@ app.put("/api/announcements/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Announcement not found" });
     }
 
-    console.log("✅ Announcement updated:", announcement._id);
+    console.log(`✅ PUT /api/announcements/${req.params.id} - Updated`);
     res.json(announcement);
   } catch (error) {
-    console.error("Error updating announcement:", error);
+    console.error("❌ PUT /api/announcements/:id error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
-// DELETE announcement
 app.delete("/api/announcements/:id", authMiddleware, async (req, res) => {
   try {
-    console.log("🗑️ Deleting announcement:", req.params.id);
-
+    console.log(`🗑️ DELETE /api/announcements/${req.params.id}`);
     const announcement = await Announcement.findByIdAndDelete(req.params.id);
-
     if (!announcement) {
       return res.status(404).json({ error: "Announcement not found" });
     }
-
-    console.log("✅ Announcement deleted:", announcement._id);
+    console.log(`✅ DELETE /api/announcements/${req.params.id} - Deleted`);
     res.json({ message: "Announcement deleted successfully" });
   } catch (error) {
-    console.error("Error deleting announcement:", error);
+    console.error("❌ DELETE /api/announcements/:id error:", error);
     res.status(500).json({ error: "Server error", message: error.message });
   }
 });
 
 // =============== BOOK ROUTES ===============
-
 // GET all books
 app.get("/api/books", async (req, res) => {
   try {
@@ -3358,13 +3390,35 @@ app.get("/api/books", async (req, res) => {
     }
 
     const books = await Book.find(query).sort({ createdAt: -1 });
-    console.log(`✅ Fetched ${books.length} books`);
+    console.log(`✅ GET /api/books - Found ${books.length} books`);
     res.json({ success: true, data: books });
   } catch (error) {
-    console.error("Error fetching books:", error);
+    console.error("❌ GET /api/books error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching books",
+      error: error.message,
+    });
+  }
+});
+
+// GET single book by ID
+app.get("/api/books/:id", async (req, res) => {
+  try {
+    const book = await Book.findById(req.params.id);
+    if (!book) {
+      console.log(`❌ GET /api/books/${req.params.id} - Book not found`);
+      return res
+        .status(404)
+        .json({ success: false, message: "Book not found" });
+    }
+    console.log(`✅ GET /api/books/${req.params.id}`);
+    res.json({ success: true, data: book });
+  } catch (error) {
+    console.error(`❌ GET /api/books/${req.params.id} error:`, error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching book",
       error: error.message,
     });
   }
@@ -3380,12 +3434,25 @@ app.post(
   ]),
   async (req, res) => {
     try {
-      console.log("📝 Creating book with data:", req.body);
+      console.log("📝 POST /api/books - Creating book with data:", req.body);
 
       if (!req.files || !req.files.image || !req.files.pdfFile) {
+        console.error("❌ POST /api/books - Missing files (image or PDF)");
         return res.status(400).json({
           success: false,
           message: "Both image and PDF file are required",
+        });
+      }
+
+      if (!req.body.title || !req.body.description || !req.body.category) {
+        console.error("❌ POST /api/books - Missing required fields");
+        if (req.files) {
+          if (req.files.image) deleteFile(req.files.image[0].path);
+          if (req.files.pdfFile) deleteFile(req.files.pdfFile[0].path);
+        }
+        return res.status(400).json({
+          success: false,
+          message: "Title, description, and category are required",
         });
       }
 
@@ -3402,19 +3469,20 @@ app.post(
         pdfFile: pdfPath,
         fileSize: fileSize,
         publishedDate: req.body.publishedDate || Date.now(),
+        isActive: true,
       };
 
       const newBook = new Book(bookData);
       await newBook.save();
 
-      console.log("✅ Book created:", newBook._id);
+      console.log("✅ POST /api/books - Book created:", newBook._id);
       res.status(201).json({
         success: true,
         message: "Book created successfully",
         data: newBook,
       });
     } catch (error) {
-      console.error("Error creating book:", error);
+      console.error("❌ POST /api/books error:", error);
       if (req.files) {
         if (req.files.image) deleteFile(req.files.image[0].path);
         if (req.files.pdfFile) deleteFile(req.files.pdfFile[0].path);
@@ -3438,10 +3506,11 @@ app.put(
   ]),
   async (req, res) => {
     try {
-      console.log("✏️ Updating book:", req.params.id);
+      console.log("✏️ PUT /api/books/:id - Updating book:", req.params.id);
 
       const book = await Book.findById(req.params.id);
       if (!book) {
+        console.log(`❌ PUT /api/books/${req.params.id} - Book not found`);
         return res
           .status(404)
           .json({ success: false, message: "Book not found" });
@@ -3473,14 +3542,14 @@ app.put(
         { new: true, runValidators: true }
       );
 
-      console.log("✅ Book updated:", updatedBook._id);
+      console.log("✅ PUT /api/books/:id - Book updated:", updatedBook._id);
       res.json({
         success: true,
         message: "Book updated successfully",
         data: updatedBook,
       });
     } catch (error) {
-      console.error("Error updating book:", error);
+      console.error("❌ PUT /api/books/:id error:", error);
       res.status(500).json({
         success: false,
         message: "Error updating book",
@@ -3493,10 +3562,11 @@ app.put(
 // DELETE book
 app.delete("/api/books/:id", authMiddleware, async (req, res) => {
   try {
-    console.log("🗑️ Deleting book:", req.params.id);
+    console.log("🗑️ DELETE /api/books/:id - Deleting book:", req.params.id);
 
     const book = await Book.findById(req.params.id);
     if (!book) {
+      console.log(`❌ DELETE /api/books/${req.params.id} - Book not found`);
       return res
         .status(404)
         .json({ success: false, message: "Book not found" });
@@ -3507,13 +3577,13 @@ app.delete("/api/books/:id", authMiddleware, async (req, res) => {
 
     await Book.findByIdAndDelete(req.params.id);
 
-    console.log("✅ Book deleted:", req.params.id);
+    console.log("✅ DELETE /api/books/:id - Book deleted:", req.params.id);
     res.json({
       success: true,
       message: "Book deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting book:", error);
+    console.error("❌ DELETE /api/books/:id error:", error);
     res.status(500).json({
       success: false,
       message: "Error deleting book",
@@ -3523,7 +3593,7 @@ app.delete("/api/books/:id", authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// ✅ UPDATED: Download book WITH DAILY LIMIT CHECK
+// ✅ Download book WITH DAILY LIMIT CHECK
 // ============================================
 app.get("/api/books/:id/download", authMiddleware, async (req, res) => {
   try {
@@ -3579,8 +3649,10 @@ app.get("/api/books/stats/by-category", async (req, res) => {
       { $match: { isActive: true } },
       { $group: { _id: "$category", count: { $sum: 1 } } },
     ]);
+    console.log(`✅ GET /api/books/stats/by-category - Found stats`);
     res.json({ success: true, data: stats });
   } catch (error) {
+    console.error("❌ GET /api/books/stats/by-category error:", error);
     res.status(500).json({
       success: false,
       message: "Error fetching stats",
