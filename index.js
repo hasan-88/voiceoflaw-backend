@@ -45,6 +45,16 @@ const UserSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ["admin", "user"], default: "user" },
 
+  // ✅ ADD THESE NEW PROFILE FIELDS
+  onboardingCompleted: { type: Boolean, default: false },
+  profilePicture: { type: String },
+  fullName: { type: String },
+  phoneNumber: { type: String },
+  province: { type: String },
+  city: { type: String },
+  courtName: { type: String },
+  barCouncilNumber: { type: String },
+
   // Enhanced Subscription Fields
   isPaid: { type: Boolean, default: false },
   isSubscribed: { type: Boolean, default: false },
@@ -1292,6 +1302,7 @@ const createUploadsDir = () => {
     "uploads/latest-updates",
     "uploads/books",
     "uploads/book-images",
+    "uploads/profiles", // ✅ ADD THIS LINE
   ];
   dirs.forEach((dir) => {
     if (!fs.existsSync(dir)) {
@@ -1513,6 +1524,10 @@ app.use("/uploads/books", express.static(path.join(uploadsDir, "books")));
 app.use(
   "/uploads/book-images",
   express.static(path.join(uploadsDir, "book-images"))
+);
+app.use(
+  "/uploads/profiles",
+  express.static(path.join(__dirname, "uploads", "profiles"))
 );
 
 app.get("/test-uploads", (req, res) => {
@@ -1939,6 +1954,18 @@ app.post("/api/auth/login", async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+
+        // ✅ ADD THESE PROFILE FIELDS
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
+
+        // Keep existing subscription fields
         subscriptionStatus: user.subscriptionStatus,
         isSubscribed: user.isSubscribed,
         trialEndDate: user.trialEndDate,
@@ -1946,6 +1973,7 @@ app.post("/api/auth/login", async (req, res) => {
         hasActiveSubscription,
         isTrialActive,
         requiresPayment: !hasActiveSubscription,
+        isPaid: user.isPaid,
       },
     });
   } catch (error) {
@@ -1953,6 +1981,76 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: "Server error during login" });
   }
 });
+
+// ✅ ADD THIS NEW ROUTE - Profile Completion
+app.post(
+  "/api/auth/complete-profile",
+  authMiddleware,
+  upload.single("profilePicture"),
+  async (req, res) => {
+    try {
+      const {
+        fullName,
+        phoneNumber,
+        province,
+        city,
+        courtName,
+        barCouncilNumber,
+      } = req.body;
+
+      const updateData = {
+        fullName,
+        phoneNumber,
+        province,
+        city,
+        courtName,
+        barCouncilNumber: barCouncilNumber || "",
+        onboardingCompleted: true,
+      };
+
+      // Handle profile picture upload
+      if (req.file) {
+        updateData.profilePicture = `/uploads/profiles/${req.file.filename}`;
+      }
+
+      const user = await User.findByIdAndUpdate(req.user.userId, updateData, {
+        new: true,
+      }).select("-password");
+
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({
+        success: true,
+        message: "Profile completed successfully",
+        user: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          fullName: user.fullName,
+          phoneNumber: user.phoneNumber,
+          province: user.province,
+          city: user.city,
+          courtName: user.courtName,
+          barCouncilNumber: user.barCouncilNumber,
+          profilePicture: user.profilePicture,
+          onboardingCompleted: user.onboardingCompleted,
+          role: user.role,
+          // Keep subscription fields
+          subscriptionStatus: user.subscriptionStatus,
+          isSubscribed: user.isSubscribed,
+          trialEndDate: user.trialEndDate,
+          subscriptionEndDate: user.subscriptionEndDate,
+          isPaid: user.isPaid,
+        },
+      });
+    } catch (error) {
+      console.error("Profile completion error:", error);
+      res.status(500).json({ message: error.message });
+    }
+  }
+);
 
 // Get User Profile (Enhanced)
 app.get("/api/auth/profile", authMiddleware, async (req, res) => {
