@@ -1886,6 +1886,7 @@ app.post("/api/auth/register", async (req, res) => {
       trialStartDate,
       trialEndDate,
       subscriptionStatus: "trial",
+      onboardingCompleted: false, // ✅ SET THIS TO FALSE FOR NEW USERS
     });
 
     await user.save();
@@ -1907,6 +1908,7 @@ app.post("/api/auth/register", async (req, res) => {
         subscriptionStatus: user.subscriptionStatus,
         trialEndDate: user.trialEndDate,
         hasActiveSubscription: true,
+        onboardingCompleted: false, // ✅ INCLUDE THIS
       },
     });
   } catch (error) {
