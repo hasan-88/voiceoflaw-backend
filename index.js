@@ -1982,13 +1982,14 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
-// ✅ ADD THIS NEW ROUTE - Profile Completion
+// ✅ COMPLETE PROFILE ROUTE (POST /api/auth/complete-profile)
 app.post(
   "/api/auth/complete-profile",
   authMiddleware,
   upload.single("profilePicture"),
   async (req, res) => {
     try {
+      const userId = req.user.userId;
       const {
         fullName,
         phoneNumber,
@@ -1998,56 +1999,67 @@ app.post(
         barCouncilNumber,
       } = req.body;
 
-      const updateData = {
-        fullName,
-        phoneNumber,
-        province,
-        city,
-        courtName,
-        barCouncilNumber: barCouncilNumber || "",
-        onboardingCompleted: true,
-      };
-
-      // Handle profile picture upload
-      if (req.file) {
-        updateData.profilePicture = `/uploads/profiles/${req.file.filename}`;
+      // Validate required fields
+      if (!fullName || !phoneNumber || !province || !city || !courtName) {
+        return res.status(400).json({
+          message: "Please fill in all required fields",
+        });
       }
 
-      const user = await User.findByIdAndUpdate(req.user.userId, updateData, {
-        new: true,
-      }).select("-password");
-
+      // Find user
+      const user = await User.findById(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
 
+      // Update user profile
+      user.fullName = fullName;
+      user.phoneNumber = phoneNumber;
+      user.province = province;
+      user.city = city;
+      user.courtName = courtName;
+      user.barCouncilNumber = barCouncilNumber || "";
+      user.onboardingCompleted = true;
+
+      // Handle profile picture if uploaded
+      if (req.file) {
+        user.profilePicture = `/uploads/profiles/${req.file.filename}`;
+      }
+
+      await user.save();
+
+      // Return updated user (exclude password)
+      const userResponse = {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
+        role: user.role,
+        isPaid: user.isPaid,
+        isSubscribed: user.isSubscribed,
+        subscriptionStatus: user.subscriptionStatus,
+        trialEndDate: user.trialEndDate,
+        subscriptionEndDate: user.subscriptionEndDate,
+        createdAt: user.createdAt,
+      };
+
       res.json({
-        success: true,
         message: "Profile completed successfully",
-        user: {
-          id: user._id,
-          email: user.email,
-          name: user.name,
-          fullName: user.fullName,
-          phoneNumber: user.phoneNumber,
-          province: user.province,
-          city: user.city,
-          courtName: user.courtName,
-          barCouncilNumber: user.barCouncilNumber,
-          profilePicture: user.profilePicture,
-          onboardingCompleted: user.onboardingCompleted,
-          role: user.role,
-          // Keep subscription fields
-          subscriptionStatus: user.subscriptionStatus,
-          isSubscribed: user.isSubscribed,
-          trialEndDate: user.trialEndDate,
-          subscriptionEndDate: user.subscriptionEndDate,
-          isPaid: user.isPaid,
-        },
+        user: userResponse,
       });
     } catch (error) {
-      console.error("Profile completion error:", error);
-      res.status(500).json({ message: error.message });
+      console.error("Complete profile error:", error);
+      res.status(500).json({
+        message: "Failed to complete profile",
+        error: error.message,
+      });
     }
   }
 );
