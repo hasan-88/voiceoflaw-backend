@@ -1892,7 +1892,7 @@ const deleteFile = (filePath) => {
 // ============================================
 
 // Register with Auto Trial (Enhanced)
-app.post("/api/auth/register", async (req, res) => {
+app.post("/auth/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
 
