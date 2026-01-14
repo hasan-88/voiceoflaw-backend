@@ -1869,6 +1869,7 @@ app.post("/api/auth/register", async (req, res) => {
         .json({ message: "Email and password are required" });
     }
 
+    // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
@@ -1879,6 +1880,7 @@ app.post("/api/auth/register", async (req, res) => {
     const trialEndDate = new Date();
     trialEndDate.setDate(trialEndDate.getDate() + 15); // 15-day trial
 
+    // Create new user with onboardingCompleted: false
     const user = new User({
       name: name || email.split("@")[0],
       email,
@@ -1886,29 +1888,32 @@ app.post("/api/auth/register", async (req, res) => {
       trialStartDate,
       trialEndDate,
       subscriptionStatus: "trial",
-      onboardingCompleted: false, // ✅ SET THIS TO FALSE FOR NEW USERS
+      onboardingCompleted: false, // ✅ ADD THIS
+      profileCompleted: false,
+      role: "user",
     });
 
     await user.save();
 
+    // Generate token
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: "30d" }
     );
 
+    // Return user without password
+    const userWithoutPassword = await User.findById(user._id).select(
+      "-password"
+    );
+
     res.status(201).json({
       message: "Registration successful! Your 15-day free trial has started.",
       token,
       user: {
-        id: user._id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        subscriptionStatus: user.subscriptionStatus,
-        trialEndDate: user.trialEndDate,
+        ...userWithoutPassword.toObject(),
+        onboardingCompleted: false, // ✅ Ensure it's set
         hasActiveSubscription: true,
-        onboardingCompleted: false, // ✅ INCLUDE THIS
       },
     });
   } catch (error) {
