@@ -1832,39 +1832,6 @@ const uploadBook = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
-// ✅ FIXED: Profile Picture Upload Configuration
-const profileStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const profileDir = path.join(__dirname, "uploads", "profiles");
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(profileDir)) {
-      fs.mkdirSync(profileDir, { recursive: true });
-    }
-    cb(null, profileDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "profile-" + uniqueSuffix + path.extname(file.originalname));
-  },
-});
-
-const uploadProfile = multer({
-  storage: profileStorage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-    if (mimetype && extname) {
-      cb(null, true);
-    } else {
-      cb(new Error("Only image files are allowed!"));
-    }
-  },
-});
-
 // ==================== HELPER FUNCTIONS ====================
 const getFileSize = (filePath) => {
   try {
@@ -1892,7 +1859,7 @@ const deleteFile = (filePath) => {
 // ============================================
 
 // Register with Auto Trial (Enhanced)
-app.post("/auth/register", async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
 
@@ -1902,18 +1869,16 @@ app.post("/auth/register", async (req, res) => {
         .json({ message: "Email and password are required" });
     }
 
-    // Check if user exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // Calculate trial dates - 15 DAYS
+    // Calculate trial dates - CHANGED TO 15 DAYS
     const trialStartDate = new Date();
     const trialEndDate = new Date();
-    trialEndDate.setDate(trialEndDate.getDate() + 15);
+    trialEndDate.setDate(trialEndDate.getDate() + 15); // 15-day trial
 
-    // ✅ Create new user with onboardingCompleted: false
     const user = new User({
       name: name || email.split("@")[0],
       email,
@@ -1921,32 +1886,33 @@ app.post("/auth/register", async (req, res) => {
       trialStartDate,
       trialEndDate,
       subscriptionStatus: "trial",
-      onboardingCompleted: false, // ✅ CRITICAL
-      role: "user",
+      onboardingCompleted: false, // ✅ SET THIS TO FALSE FOR NEW USERS
     });
 
     await user.save();
 
-    // Generate token
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
       JWT_SECRET,
       { expiresIn: "30d" }
     );
 
-    console.log("✅ New user registered:", user.email, "- Onboarding required");
-
-    // Return user without password
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
     res.status(201).json({
       message: "Registration successful! Your 15-day free trial has started.",
       token,
-      user: userResponse,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        subscriptionStatus: user.subscriptionStatus,
+        trialEndDate: user.trialEndDate,
+        hasActiveSubscription: true,
+        onboardingCompleted: false, // ✅ INCLUDE THIS
+      },
     });
   } catch (error) {
-    console.error("❌ Registration error:", error);
+    console.error("Registration error:", error);
     res.status(500).json({ message: "Server error during registration" });
   }
 });
@@ -1981,24 +1947,39 @@ app.post("/api/auth/login", async (req, res) => {
       { expiresIn: "30d" }
     );
 
-    console.log(
-      "✅ User logged in:",
-      user.email,
-      "- Onboarding completed:",
-      user.onboardingCompleted
-    );
-
-    // Return complete user data
-    const userResponse = user.toObject();
-    delete userResponse.password;
-
+    // IMPORTANT: Always allow login, never block or redirect
     res.json({
       message: "Login successful",
       token,
-      user: userResponse,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+
+        // ✅ ADD THESE PROFILE FIELDS
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
+
+        // Keep existing subscription fields
+        subscriptionStatus: user.subscriptionStatus,
+        isSubscribed: user.isSubscribed,
+        trialEndDate: user.trialEndDate,
+        subscriptionEndDate: user.subscriptionEndDate,
+        hasActiveSubscription,
+        isTrialActive,
+        requiresPayment: !hasActiveSubscription,
+        isPaid: user.isPaid,
+      },
     });
   } catch (error) {
-    console.error("❌ Login error:", error);
+    console.error("Login error:", error);
     res.status(500).json({ message: "Server error during login" });
   }
 });
@@ -2007,7 +1988,7 @@ app.post("/api/auth/login", async (req, res) => {
 app.post(
   "/api/auth/complete-profile",
   authMiddleware,
-  uploadProfile.single("profilePicture"),
+  upload.single("profilePicture"),
   async (req, res) => {
     try {
       const userId = req.user.userId;
@@ -2020,24 +2001,10 @@ app.post(
         barCouncilNumber,
       } = req.body;
 
-      console.log("📝 Complete Profile Request:", {
-        userId,
-        fullName,
-        phoneNumber,
-        hasFile: !!req.file,
-      });
-
       // Validate required fields
       if (!fullName || !phoneNumber || !province || !city || !courtName) {
         return res.status(400).json({
           message: "Please fill in all required fields",
-          required: [
-            "fullName",
-            "phoneNumber",
-            "province",
-            "city",
-            "courtName",
-          ],
         });
       }
 
@@ -2054,29 +2021,43 @@ app.post(
       user.city = city;
       user.courtName = courtName;
       user.barCouncilNumber = barCouncilNumber || "";
-      user.onboardingCompleted = true; // ✅ CRITICAL!
+      user.onboardingCompleted = true;
 
       // Handle profile picture if uploaded
       if (req.file) {
         user.profilePicture = `/uploads/profiles/${req.file.filename}`;
-        console.log("📸 Profile picture uploaded:", user.profilePicture);
       }
 
-      user.updatedAt = new Date();
       await user.save();
 
-      console.log("✅ Profile completed for user:", user.email);
-
       // Return updated user (exclude password)
-      const userResponse = user.toObject();
-      delete userResponse.password;
+      const userResponse = {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
+        role: user.role,
+        isPaid: user.isPaid,
+        isSubscribed: user.isSubscribed,
+        subscriptionStatus: user.subscriptionStatus,
+        trialEndDate: user.trialEndDate,
+        subscriptionEndDate: user.subscriptionEndDate,
+        createdAt: user.createdAt,
+      };
 
       res.json({
         message: "Profile completed successfully",
         user: userResponse,
       });
     } catch (error) {
-      console.error("❌ Complete profile error:", error);
+      console.error("Complete profile error:", error);
       res.status(500).json({
         message: "Failed to complete profile",
         error: error.message,
