@@ -1859,9 +1859,6 @@ const deleteFile = (filePath) => {
 // ============================================
 
 // Register with Auto Trial (Enhanced)
-// ============================================
-// FIXED REGISTER ROUTE IN index.js (LINE ~1090)
-// ============================================
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -1945,10 +1942,8 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ message: "Server error during registration" });
   }
 });
+
 // Login (Enhanced)
-// ============================================
-// FIXED LOGIN ROUTE IN index.js (LINE ~1140)
-// ============================================
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1978,14 +1973,7 @@ app.post("/api/auth/login", async (req, res) => {
       { expiresIn: "30d" }
     );
 
-    console.log("✅ USER LOGIN:", {
-      email: user.email,
-      onboardingCompleted: user.onboardingCompleted,
-      fullName: user.fullName,
-      hasProfile: !!(user.fullName && user.phoneNumber && user.city)
-    });
-
-    // ✅ ALWAYS return full profile data
+    // IMPORTANT: Always allow login, never block or redirect
     res.json({
       message: "Login successful",
       token,
@@ -1995,17 +1983,17 @@ app.post("/api/auth/login", async (req, res) => {
         name: user.name,
         role: user.role,
 
-        // ✅ CRITICAL: PROFILE FIELDS
-        fullName: user.fullName || null,
-        phoneNumber: user.phoneNumber || null,
-        province: user.province || null,
-        city: user.city || null,
-        courtName: user.courtName || null,
-        barCouncilNumber: user.barCouncilNumber || null,
-        profilePicture: user.profilePicture || null,
-        onboardingCompleted: user.onboardingCompleted || false,
+        // ✅ ADD THESE PROFILE FIELDS
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
 
-        // Subscription fields
+        // Keep existing subscription fields
         subscriptionStatus: user.subscriptionStatus,
         isSubscribed: user.isSubscribed,
         trialEndDate: user.trialEndDate,
@@ -2014,7 +2002,6 @@ app.post("/api/auth/login", async (req, res) => {
         isTrialActive,
         requiresPayment: !hasActiveSubscription,
         isPaid: user.isPaid,
-        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -2022,10 +2009,8 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: "Server error during login" });
   }
 });
+
 // ✅ COMPLETE PROFILE ROUTE (POST /api/auth/complete-profile)
-// ============================================
-// FIXED COMPLETE PROFILE ROUTE IN index.js (LINE ~1167)
-// ============================================
 app.post(
   "/api/auth/complete-profile",
   authMiddleware,
@@ -2041,17 +2026,6 @@ app.post(
         courtName,
         barCouncilNumber,
       } = req.body;
-
-      console.log("📝 COMPLETING PROFILE FOR USER:", userId);
-      console.log("📝 RECEIVED DATA:", {
-        fullName,
-        phoneNumber,
-        province,
-        city,
-        courtName,
-        barCouncilNumber,
-        hasFile: !!req.file
-      });
 
       // Validate required fields
       if (!fullName || !phoneNumber || !province || !city || !courtName) {
@@ -2073,8 +2047,6 @@ app.post(
       user.city = city;
       user.courtName = courtName;
       user.barCouncilNumber = barCouncilNumber || "";
-      
-      // ✅ CRITICAL: SET ONBOARDING TO TRUE
       user.onboardingCompleted = true;
 
       // Handle profile picture if uploaded
@@ -2082,15 +2054,7 @@ app.post(
         user.profilePicture = `/uploads/profiles/${req.file.filename}`;
       }
 
-      user.updatedAt = new Date();
       await user.save();
-
-      console.log("✅ PROFILE SAVED:", {
-        email: user.email,
-        onboardingCompleted: user.onboardingCompleted,
-        fullName: user.fullName,
-        city: user.city
-      });
 
       // Return updated user (exclude password)
       const userResponse = {
@@ -2129,9 +2093,6 @@ app.post(
 );
 
 // Get User Profile (Enhanced)
-// ============================================
-// FIXED GET PROFILE ROUTE IN index.js (LINE ~1230)
-// ============================================
 app.get("/api/auth/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select("-password");
@@ -2143,14 +2104,6 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
     const hasActiveSubscription = user.hasActiveSubscription();
     const isTrialActive = user.isTrialActive();
 
-    console.log("🔍 PROFILE FETCH:", {
-      email: user.email,
-      onboardingCompleted: user.onboardingCompleted,
-      fullName: user.fullName,
-      phoneNumber: user.phoneNumber,
-      city: user.city,
-    });
-
     res.json({
       user: {
         id: user._id,
@@ -2158,15 +2111,15 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
         name: user.name,
         role: user.role,
 
-        // ✅ CRITICAL: ALL PROFILE FIELDS
-        fullName: user.fullName || null,
-        phoneNumber: user.phoneNumber || null,
-        province: user.province || null,
-        city: user.city || null,
-        courtName: user.courtName || null,
-        barCouncilNumber: user.barCouncilNumber || null,
-        profilePicture: user.profilePicture || null,
-        onboardingCompleted: user.onboardingCompleted || false,
+        // ✅ ADD PROFILE FIELDS
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
 
         // Subscription fields
         subscriptionStatus: user.subscriptionStatus,
