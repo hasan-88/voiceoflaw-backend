@@ -1859,6 +1859,9 @@ const deleteFile = (filePath) => {
 // ============================================
 
 // Register with Auto Trial (Enhanced)
+// ============================================
+// FIXED REGISTER ROUTE IN index.js (LINE ~1090)
+// ============================================
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -1874,10 +1877,10 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    // Calculate trial dates - CHANGED TO 15 DAYS
+    // Calculate trial dates - 15 DAYS
     const trialStartDate = new Date();
     const trialEndDate = new Date();
-    trialEndDate.setDate(trialEndDate.getDate() + 15); // 15-day trial
+    trialEndDate.setDate(trialEndDate.getDate() + 15);
 
     const user = new User({
       name: name || email.split("@")[0],
@@ -1886,10 +1889,27 @@ app.post("/api/auth/register", async (req, res) => {
       trialStartDate,
       trialEndDate,
       subscriptionStatus: "trial",
-      onboardingCompleted: false, // ✅ SET THIS TO FALSE FOR NEW USERS
+      
+      // ✅ CRITICAL: EXPLICITLY SET ONBOARDING TO FALSE
+      onboardingCompleted: false,
+      
+      // Set profile fields to empty/null
+      fullName: null,
+      phoneNumber: null,
+      province: null,
+      city: null,
+      courtName: null,
+      barCouncilNumber: null,
+      profilePicture: null,
     });
 
     await user.save();
+
+    console.log("✅ NEW USER CREATED:", {
+      email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
+      id: user._id
+    });
 
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
@@ -1908,7 +1928,16 @@ app.post("/api/auth/register", async (req, res) => {
         subscriptionStatus: user.subscriptionStatus,
         trialEndDate: user.trialEndDate,
         hasActiveSubscription: true,
-        onboardingCompleted: false, // ✅ INCLUDE THIS
+        
+        // ✅ CRITICAL: RETURN ONBOARDING STATUS
+        onboardingCompleted: false,
+        fullName: null,
+        phoneNumber: null,
+        province: null,
+        city: null,
+        courtName: null,
+        barCouncilNumber: null,
+        profilePicture: null,
       },
     });
   } catch (error) {
@@ -1916,8 +1945,10 @@ app.post("/api/auth/register", async (req, res) => {
     res.status(500).json({ message: "Server error during registration" });
   }
 });
-
 // Login (Enhanced)
+// ============================================
+// FIXED LOGIN ROUTE IN index.js (LINE ~1140)
+// ============================================
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -1947,7 +1978,14 @@ app.post("/api/auth/login", async (req, res) => {
       { expiresIn: "30d" }
     );
 
-    // IMPORTANT: Always allow login, never block or redirect
+    console.log("✅ USER LOGIN:", {
+      email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
+      fullName: user.fullName,
+      hasProfile: !!(user.fullName && user.phoneNumber && user.city)
+    });
+
+    // ✅ ALWAYS return full profile data
     res.json({
       message: "Login successful",
       token,
@@ -1957,17 +1995,17 @@ app.post("/api/auth/login", async (req, res) => {
         name: user.name,
         role: user.role,
 
-        // ✅ ADD THESE PROFILE FIELDS
-        fullName: user.fullName,
-        phoneNumber: user.phoneNumber,
-        province: user.province,
-        city: user.city,
-        courtName: user.courtName,
-        barCouncilNumber: user.barCouncilNumber,
-        profilePicture: user.profilePicture,
-        onboardingCompleted: user.onboardingCompleted,
+        // ✅ CRITICAL: PROFILE FIELDS
+        fullName: user.fullName || null,
+        phoneNumber: user.phoneNumber || null,
+        province: user.province || null,
+        city: user.city || null,
+        courtName: user.courtName || null,
+        barCouncilNumber: user.barCouncilNumber || null,
+        profilePicture: user.profilePicture || null,
+        onboardingCompleted: user.onboardingCompleted || false,
 
-        // Keep existing subscription fields
+        // Subscription fields
         subscriptionStatus: user.subscriptionStatus,
         isSubscribed: user.isSubscribed,
         trialEndDate: user.trialEndDate,
@@ -1976,6 +2014,7 @@ app.post("/api/auth/login", async (req, res) => {
         isTrialActive,
         requiresPayment: !hasActiveSubscription,
         isPaid: user.isPaid,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -1983,8 +2022,10 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: "Server error during login" });
   }
 });
-
 // ✅ COMPLETE PROFILE ROUTE (POST /api/auth/complete-profile)
+// ============================================
+// FIXED COMPLETE PROFILE ROUTE IN index.js (LINE ~1167)
+// ============================================
 app.post(
   "/api/auth/complete-profile",
   authMiddleware,
@@ -2000,6 +2041,17 @@ app.post(
         courtName,
         barCouncilNumber,
       } = req.body;
+
+      console.log("📝 COMPLETING PROFILE FOR USER:", userId);
+      console.log("📝 RECEIVED DATA:", {
+        fullName,
+        phoneNumber,
+        province,
+        city,
+        courtName,
+        barCouncilNumber,
+        hasFile: !!req.file
+      });
 
       // Validate required fields
       if (!fullName || !phoneNumber || !province || !city || !courtName) {
@@ -2021,6 +2073,8 @@ app.post(
       user.city = city;
       user.courtName = courtName;
       user.barCouncilNumber = barCouncilNumber || "";
+      
+      // ✅ CRITICAL: SET ONBOARDING TO TRUE
       user.onboardingCompleted = true;
 
       // Handle profile picture if uploaded
@@ -2028,7 +2082,15 @@ app.post(
         user.profilePicture = `/uploads/profiles/${req.file.filename}`;
       }
 
+      user.updatedAt = new Date();
       await user.save();
+
+      console.log("✅ PROFILE SAVED:", {
+        email: user.email,
+        onboardingCompleted: user.onboardingCompleted,
+        fullName: user.fullName,
+        city: user.city
+      });
 
       // Return updated user (exclude password)
       const userResponse = {
@@ -2067,6 +2129,9 @@ app.post(
 );
 
 // Get User Profile (Enhanced)
+// ============================================
+// FIXED GET PROFILE ROUTE IN index.js (LINE ~1230)
+// ============================================
 app.get("/api/auth/profile", authMiddleware, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select("-password");
@@ -2078,6 +2143,14 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
     const hasActiveSubscription = user.hasActiveSubscription();
     const isTrialActive = user.isTrialActive();
 
+    console.log("🔍 PROFILE FETCH:", {
+      email: user.email,
+      onboardingCompleted: user.onboardingCompleted,
+      fullName: user.fullName,
+      phoneNumber: user.phoneNumber,
+      city: user.city,
+    });
+
     res.json({
       user: {
         id: user._id,
@@ -2085,15 +2158,15 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
         name: user.name,
         role: user.role,
 
-        // ✅ ADD PROFILE FIELDS
-        fullName: user.fullName,
-        phoneNumber: user.phoneNumber,
-        province: user.province,
-        city: user.city,
-        courtName: user.courtName,
-        barCouncilNumber: user.barCouncilNumber,
-        profilePicture: user.profilePicture,
-        onboardingCompleted: user.onboardingCompleted,
+        // ✅ CRITICAL: ALL PROFILE FIELDS
+        fullName: user.fullName || null,
+        phoneNumber: user.phoneNumber || null,
+        province: user.province || null,
+        city: user.city || null,
+        courtName: user.courtName || null,
+        barCouncilNumber: user.barCouncilNumber || null,
+        profilePicture: user.profilePicture || null,
+        onboardingCompleted: user.onboardingCompleted || false,
 
         // Subscription fields
         subscriptionStatus: user.subscriptionStatus,
