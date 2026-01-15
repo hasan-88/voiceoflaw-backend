@@ -2084,6 +2084,18 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
         email: user.email,
         name: user.name,
         role: user.role,
+
+        // ✅ ADD PROFILE FIELDS
+        fullName: user.fullName,
+        phoneNumber: user.phoneNumber,
+        province: user.province,
+        city: user.city,
+        courtName: user.courtName,
+        barCouncilNumber: user.barCouncilNumber,
+        profilePicture: user.profilePicture,
+        onboardingCompleted: user.onboardingCompleted,
+
+        // Subscription fields
         subscriptionStatus: user.subscriptionStatus,
         isSubscribed: user.isSubscribed,
         trialStartDate: user.trialStartDate,
@@ -2094,7 +2106,8 @@ app.get("/api/auth/profile", authMiddleware, async (req, res) => {
         isTrialActive,
         requiresPayment: !hasActiveSubscription,
         paymentStatus: user.paymentStatus,
-        isPaid: user.isPaid, // Legacy field
+        isPaid: user.isPaid,
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
